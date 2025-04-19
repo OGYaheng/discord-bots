@@ -35,7 +35,7 @@ This is where I drop my personal experiments, hobby projects, and code that I wr
 
 Got a question, or just wanna say hi?
 
--**Email**: [dodo10716@gmail.com](mailto:dodo10716@gmail.com)
+- **Email**: [dodo10716@gmail.com](mailto:dodo10716@gmail.com)
 
 ---
 
