@@ -31,7 +31,6 @@ executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 processing_event = asyncio.Event() 
 processing_event.set()  
 
-# 用於追蹤歌曲開始時間和當前播放歌曲
 song_start_times = {}  
 now_playing_tracks = {}  
 progress_messages = {}  
@@ -58,7 +57,7 @@ YDL_OPTS = {
     'quiet': True,
     'no_warnings': True,
     'default_search': 'ytsearch',
-    'extract_flat': True,  # 只提取基本資訊
+    'extract_flat': True,  
     'skip_download': True,
     'cachedir': '/tmp',  # 使用臨時目錄當快取
     'socket_timeout': 3,  # 降低超時時間以加快回應 
@@ -285,7 +284,7 @@ async def play_next(vc, interaction=None):
 
 async def play_next_wrapper(vc):
     """包裝函數，確保播放下一首的安全調用"""
-    await asyncio.sleep(0.5)  # 增加延遲
+    await asyncio.sleep(0.5)  
     processing_event.set()  
     await play_next(vc)
 
