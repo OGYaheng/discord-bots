@@ -28,13 +28,13 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 music_queue = deque()
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
-processing_event = asyncio.Event()  # 使用事件代替鎖，提高並發效率
-processing_event.set()  # 初始狀態為可用
+processing_event = asyncio.Event() 
+processing_event.set()  
 
 # 用於追蹤歌曲開始時間和當前播放歌曲
-song_start_times = {}  # 記錄歌曲開始播放的時間
-now_playing_tracks = {}  # 記錄當前正在播放的歌曲
-progress_messages = {}  # 用於保存顯示進度條的訊息，以便更新
+song_start_times = {}  
+now_playing_tracks = {}  
+progress_messages = {}  
 
 # --------------------------
 # 音訊處理設定 (fps.ms 優化)
@@ -107,9 +107,7 @@ async def update_progress_bar(guild_id, channel_id, message_id):
         if not message:
             return
         
-        # 最多更新20次，每5秒一次，共100秒
         for _ in range(20):
-            # 檢查歌曲是否還在播放
             if guild_id not in now_playing_tracks or guild_id not in song_start_times:
                 break
                 
@@ -117,17 +115,14 @@ async def update_progress_bar(guild_id, channel_id, message_id):
             if not guild or not guild.voice_client or not guild.voice_client.is_playing():
                 break
             
-            # 獲取當前歌曲並計算進度
             track = now_playing_tracks[guild_id]
             current_time = time.time() - song_start_times[guild_id]
             total_time = track['duration']
             
-            # 更新進度條
             progress_bar = create_progress_bar(current_time, total_time)
             
             embed = message.embeds[0]
             
-            # 找到並更新進度欄位
             for i, field in enumerate(embed.fields):
                 if field.name == "進度":
                     embed.set_field_at(i, name="進度", value=f"`{progress_bar}`", inline=False)
@@ -138,7 +133,6 @@ async def update_progress_bar(guild_id, channel_id, message_id):
             
             await message.edit(embed=embed)
             
-            # 等待5秒
             await asyncio.sleep(5)
             
     except Exception as e:
@@ -156,13 +150,12 @@ async def song_autocomplete(interaction: discord.Interaction, current: str) -> l
     ]
 
 # --------------------------
-# 優化的 YouTube 資訊提取
+# 優化 YouTube 資訊提取
 # --------------------------
 async def extract_song_info(query: str):
     """以非同步方式提取歌曲資訊 (優化3.0)"""
     start_time = time.monotonic()
     
-    # 預處理查詢
     if not query.startswith(('http://', 'https://')):
         query = f"ytsearch:{query}"
     
@@ -170,22 +163,18 @@ async def extract_song_info(query: str):
     try:
         loop = asyncio.get_running_loop()
         
-        # 實際的提取函數
         def _extract():
             with yt_dlp.YoutubeDL(YDL_OPTS) as ydl:
                 info = ydl.extract_info(query, download=False)
                 return info
         
-        # 非同步執行
         info = await loop.run_in_executor(executor, _extract)
         
-        # 處理搜索結果
         if 'entries' in info:
             if not info['entries']:
                 raise ValueError("找不到相關歌曲")
             info = info['entries'][0]
         
-        # 構建簡化的曲目信息
         track = {
             'url': info['url'],
             'title': info.get('title', '未知曲目'),
@@ -203,7 +192,7 @@ async def extract_song_info(query: str):
         raise ValueError(f"無法獲取音樂資訊: {str(e)}")
 
 # --------------------------
-# 音樂播放核心 (優化8.0)
+# 音樂播放核心 (優化5.0)
 # --------------------------
 async def play_next(vc, interaction=None):
     """播放下一首歌曲 (優化版)"""
@@ -226,7 +215,6 @@ async def play_next(vc, interaction=None):
         track = music_queue.popleft()
         guild_id = vc.guild.id
         
-        # 記錄歌曲開始時間和當前播放歌曲
         song_start_times[guild_id] = time.time()
         now_playing_tracks[guild_id] = track
         
@@ -234,21 +222,17 @@ async def play_next(vc, interaction=None):
             if error:
                 print(f"播放錯誤: {error}")
             
-            # 使用事件而非直接調用，避免遞迴問題
             bot.loop.call_soon_threadsafe(lambda: asyncio.create_task(play_next_wrapper(vc)))
         
         try:
             # 直接使用 URL 串流
             source = discord.FFmpegPCMAudio(track['url'], **FFMPEG_OPTS)
             
-            # 調低音量以避免失真
             source = discord.PCMVolumeTransformer(source, volume=0.5)
             
-            # 開始播放
             vc.play(source, after=after_play)
             print(f"開始播放: {track['title']}")
             
-            # 創建帶有進度條的播放提示
             current_time = 0
             total_time = track['duration']
             progress_bar = create_progress_bar(current_time, total_time)
@@ -257,7 +241,6 @@ async def play_next(vc, interaction=None):
             embed.add_field(name="曲目", value=track['title'], inline=False)
             embed.add_field(name="進度", value=f"`{progress_bar}`", inline=False)
             
-            # 添加時長資訊
             if track['duration'] > 0:
                 minutes = track['duration'] // 60
                 seconds = track['duration'] % 60
@@ -266,12 +249,9 @@ async def play_next(vc, interaction=None):
             if track.get('thumbnail'):
                 embed.set_thumbnail(url=track['thumbnail'])
             
-            # 發送播放通知並保存消息以便更新進度條
             if interaction and not interaction.is_expired():
                 message = await interaction.followup.send(embed=embed)
-                # 啟動進度條更新任務
                 if guild_id in progress_messages:
-                    # 清除舊的進度條消息
                     try:
                         old_channel_id, old_message_id = progress_messages[guild_id]
                         old_channel = bot.get_channel(old_channel_id)
@@ -284,12 +264,10 @@ async def play_next(vc, interaction=None):
                     except:
                         pass
                 
-                # 保存新的進度條消息
                 progress_messages[guild_id] = (interaction.channel_id, message.id)
                 asyncio.create_task(update_progress_bar(guild_id, interaction.channel_id, message.id))
             elif vc.channel:
                 message = await vc.channel.send(embed=embed)
-                # 保存消息以便更新進度條
                 progress_messages[guild_id] = (vc.channel.id, message.id)
                 asyncio.create_task(update_progress_bar(guild_id, vc.channel.id, message.id))
                 
@@ -298,20 +276,17 @@ async def play_next(vc, interaction=None):
             if vc.channel:
                 asyncio.create_task(vc.channel.send(f"❌ 播放失敗: {str(e)}"))
             
-            # 釋放事件
             processing_event.set()
             
-            # 嘗試播放下一首
             await play_next_wrapper(vc)
     finally:
-        # 確保事件被釋放
         if not processing_event.is_set():
             processing_event.set()
 
 async def play_next_wrapper(vc):
     """包裝函數，確保播放下一首的安全調用"""
     await asyncio.sleep(0.5)  # 增加延遲
-    processing_event.set()  # 確保事件被釋放
+    processing_event.set()  
     await play_next(vc)
 
 # --------------------------
@@ -349,7 +324,7 @@ async def play(interaction: discord.Interaction, query: str):
 
         processing_msg = await interaction.followup.send("🔍 正在處理您的請求...")
 
-        # 優化的音樂解析流程
+        # 優化音樂解析流程
         try:
             track = await extract_song_info(query)
         except ValueError as e:
@@ -357,10 +332,8 @@ async def play(interaction: discord.Interaction, query: str):
             await interaction.followup.send(f"❌ {str(e)}")
             return
 
-        # 檢查是否已在播放並將歌曲加入隊列
         is_playing = vc.is_playing()
         
-        # 等待事件釋放
         await processing_event.wait()
         processing_event.clear()
         
@@ -371,7 +344,6 @@ async def play(interaction: discord.Interaction, query: str):
         
         await processing_msg.delete()
         
-        # 根據播放狀態選擇回應方式
         if is_playing:
             embed = discord.Embed(title="🎵 已加入隊列", color=0x00ff00)
             embed.add_field(name="曲目", value=track['title'], inline=False)
@@ -386,7 +358,6 @@ async def play(interaction: discord.Interaction, query: str):
                 
             await interaction.followup.send(embed=embed)
         else:
-            # 如果沒有正在播放的歌曲，立即開始播放
             await play_next(vc, interaction)
             
         # 記錄播放效能
@@ -405,7 +376,7 @@ async def skip(interaction: discord.Interaction):
     if not vc or not vc.is_playing():
         return await interaction.followup.send("❌ 目前沒有正在播放的歌曲！")
     
-    vc.stop()  # 停止當前播放，after_play 回調會自動播放下一首
+    vc.stop()  
     await interaction.followup.send("⏭️ 已跳過當前歌曲")
 
 @bot.tree.command(name="playlist", description="查看目前的音樂隊列")
@@ -416,7 +387,6 @@ async def playlist(interaction: discord.Interaction):
     
     embed = discord.Embed(title="🎶 音樂隊列", color=0x00ff00)
     
-    # 等待事件鎖釋放
     await processing_event.wait()
     
     for idx, track in enumerate(music_queue, start=1):
@@ -461,20 +431,16 @@ async def on_ready():
     print(f"✅ 機器人已上線：{bot.user}")
     
     try:
-        # 先清除全域指令
         await bot.tree.sync()
         print("✅ 已清除全域指令")
         
-        # 專用於伺服器的指令同步
         guild = discord.Object(id=GUILD_ID)
         bot.tree.clear_commands(guild=guild)
         
-        # 手動添加命令 (確認指令存在)
         for command in bot.tree.get_commands():
             print(f"正在添加指令：{command.name}")
             bot.tree.add_command(command, guild=guild)
         
-        # 同步到伺服器
         synced = await bot.tree.sync(guild=guild)
         print(f"✅ 已同步 {len(synced)} 個指令至伺服器 {GUILD_ID}")
     except Exception as e:
@@ -500,18 +466,14 @@ async def sync(ctx):
     try:
         guild = discord.Object(id=GUILD_ID)
         
-        # 檢查已註冊的指令
         commands = await bot.tree.fetch_commands(guild=guild)
         print(f"已發現 {len(commands)} 個已註冊指令")
         
-        # 重新同步所有指令
         bot.tree.clear_commands(guild=guild)
         
-        # 手動添加所有斜線指令
         for cmd in [join, play, skip, playlist, ping_slash, clean]:
             bot.tree.add_command(cmd, guild=guild)
         
-        # 同步指令
         fmt = await bot.tree.sync(guild=guild)
         
         await ctx.send(f"✅ 已同步 {len(fmt)} 個指令")
@@ -548,7 +510,6 @@ async def ping(ctx):
 @bot.command(name="clean")
 async def clean_queue(ctx):
     """清空音樂隊列"""
-    # 等待事件釋放
     await processing_event.wait()
     processing_event.clear()
     
